@@ -1,6 +1,7 @@
 import pandas as pd
 import math
 
+
 def calcula_habitantes(lista_antenas):
 
     # Inicia a class que contém as informações da vila
@@ -52,6 +53,7 @@ def calcula_habitantes(lista_antenas):
 
     lista_antenas_ = [Antena(*dict_antenas[key]) for key in lista_antenas]
     cobertura_ = set(sum([antena.cobertura(vilas) for antena in lista_antenas_], []))
-    habitantes = sum(vila.hab for vila in cobertura_)
-
-    return habitantes
+    custo = sum(antena.custo for antena in lista_antenas_)
+    habitantes = sum(vila.hab for vila in cobertura_) if custo <= 100_000 else 0
+    
+    return habitantes,
