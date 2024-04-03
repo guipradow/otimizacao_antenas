@@ -1,16 +1,16 @@
 from deap import base, creator, tools
-from deap.algorithms import varAnd
 from funcao_objetivo import calcula_habitantes
 import random
 import numpy as np
 import multiprocessing
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # Lista de antenas disponíveis
 antenas_disponiveis = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 
 # Constantes do algoritmo genético
-NGEN, CXPB, MUTPB = 100, .7, .3
+NGEN, CXPB, MUTPB = 100, .5, .2
 mu, lambda_ = 5, 10
 HOF_SIZE = 1
 
@@ -49,10 +49,6 @@ toolbox.register('evaluate', fitness_function)
 toolbox.register('mate', tools.cxTwoPoint)
 toolbox.register('mutate', tools.mutFlipBit, indpb=.05)
 
-# Define a estratégia de seleção
-toolbox.register('select', tools.selRoulette)
-
-
 # Define a rotina do algoritmo genético
 def main():
     # Calcula estatísticas
@@ -88,12 +84,24 @@ def main():
 
     # Inicia o processo evolutivo
     for g in range(1, NGEN):
-        # Seleciona os indivíduos para a próxima geração
-        offspring = toolbox.select(pop, len(pop) - hof_size)
-        offspring = varAnd(offspring, toolbox, CXPB, MUTPB)
-        
-        # Clona os indivíduos selecionados
+        # Seleciona os indivíduos para a próxima geração (prole)
+        offspring = tools.selRandom(pop, lambda_)
+
+        # Clona os indivíduos da prole
         offspring = list(map(toolbox.clone, offspring))
+
+        # Aplica cruzamento nos indivíduos selecionados
+        for child1, child2, in zip(offspring[::2], offspring[1::2]):
+            if np.random.random() < CXPB:
+                toolbox.mate(child1, child2)
+                del child1.fitness.values
+                del child2.fitness.values
+
+        # Aplica mutação nos indivíduos selecionados
+        for mutant in offspring:
+            if np.random.random() < MUTPB:
+                toolbox.mutate(mutant)
+                del mutant.fitness.values
 
         # Avalia os indivíduos com fitness inválido
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
@@ -107,8 +115,11 @@ def main():
         # Atualiza o hall of fame com os filhos gerados
         hof.update(offspring)
 
-        # Substitui a população atual pelos filhos gerados
-        pop[:] = offspring
+        # Substitui a população atual pelos filhos gerados (mu + lambda_)
+        pop[:] = tools.selBest(pop + offspring, mu)
+
+        # Substitui a população atual pelos filhos gerados (mu, lambda_)
+        #pop[:] = tools.selBest(pop, mu) 
 
         # Atualiza as estatísticas da população atual ao logbook
         record = stats.compile(pop) if stats else {}
@@ -123,16 +134,26 @@ if __name__ == '__main__':
     pool = multiprocessing.Pool()
     toolbox.register('map', pool.map)
     
+    # Inicia a melhor solução como uma lista vazia
+    best_solution = []
+    # Inicia a melhor aptidão como 0
+    best_fitness = 0
     # Inicia figura para plotagem das execuções do algoritmo genético
     fig, ax = plt.subplots(figsize=(6.4, 4.8))
+    # Loop para as execuções do algoritmo genético
     for i in range(10):
         pop, logbook, hof = main()
+        if hof.items[0].fitness.values[0] > best_fitness:
+            best_fitness = hof.items[0].fitness.values[0]
+            best_solution = hof.items[0]
+
         # Printa a melhor solução encontrada
         print(f'''
-Melhor solução encontrada: {hof.items[0]} com  uma cobertura de
-{hof.items[0].fitness.values[0]:.0f} habitantes
+Melhor solução encontrada: {best_solution} com  uma cobertura de
+{best_fitness:.0f} habitantes
 ''')
-        
+
+
         # Extrai as estatísticas
         maxFitnessValues, meanFitnessValues = logbook.select('max', 'avg')
 
@@ -143,4 +164,13 @@ Melhor solução encontrada: {hof.items[0]} com  uma cobertura de
     plt.title('Cobertura através das gerações')
     plt.show()
     pool.close()
+
+    # Printa a melhor solução
+    print(f'Melhor solução encontrada: {best_solution}')
+    print(f'Cobertura da melhor solução: {best_fitness} habitantes')
+
+    # Dict resposta -> xlsx
+    resposta = {key: value for key, value in zip(antenas_disponiveis, best_solution)}
+    df_resposta = pd.DataFrame(resposta.items(), columns=['Antena', 'Antenas a construir'])
+    df_resposta.to_excel('./solutions/resposta_ag.xlsx', index=False)
 
